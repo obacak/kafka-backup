@@ -320,12 +320,19 @@ impl RestoreEngine {
         health.register_component("storage");
 
         // Initialize circuit breakers
-        let kafka_circuit_breaker = Arc::new(CircuitBreaker::new(CircuitBreakerConfig {
-            failure_threshold: 5,
-            reset_timeout: Duration::from_secs(30),
-            success_threshold: 2,
-            name: "kafka".to_string(),
-        }));
+        let restore_options = config.restore.as_ref().cloned().unwrap_or_default();
+        let kafka_circuit_breaker = if restore_options.circuit_breaker.enabled {
+            Arc::new(CircuitBreaker::new(CircuitBreakerConfig {
+                failure_threshold: restore_options.circuit_breaker.failure_threshold,
+                reset_timeout: Duration::from_millis(
+                    restore_options.circuit_breaker.reset_timeout_ms,
+                ),
+                success_threshold: restore_options.circuit_breaker.success_threshold,
+                name: "kafka".to_string(),
+            }))
+        } else {
+            Arc::new(CircuitBreaker::disabled())
+        };
 
         let storage_circuit_breaker = Arc::new(CircuitBreaker::new(CircuitBreakerConfig {
             failure_threshold: 3,

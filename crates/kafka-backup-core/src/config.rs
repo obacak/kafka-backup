@@ -776,6 +776,58 @@ pub enum ExistingTopicConfigPolicy {
     Fail,
 }
 
+/// Circuit breaker settings for restore Kafka operations.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RestoreCircuitBreakerConfig {
+    /// Whether the restore circuit breaker should block operations.
+    #[serde(default = "default_restore_circuit_breaker_enabled")]
+    pub enabled: bool,
+
+    /// Number of consecutive failures before opening the circuit.
+    #[serde(default = "default_restore_circuit_breaker_failure_threshold")]
+    pub failure_threshold: u32,
+
+    /// Time to wait before probing a previously failing circuit.
+    #[serde(default = "default_restore_circuit_breaker_reset_timeout_ms")]
+    pub reset_timeout_ms: u64,
+
+    /// Number of successful probes required to close the circuit.
+    #[serde(default = "default_restore_circuit_breaker_success_threshold")]
+    pub success_threshold: u32,
+}
+
+impl Default for RestoreCircuitBreakerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_restore_circuit_breaker_enabled(),
+            failure_threshold: default_restore_circuit_breaker_failure_threshold(),
+            reset_timeout_ms: default_restore_circuit_breaker_reset_timeout_ms(),
+            success_threshold: default_restore_circuit_breaker_success_threshold(),
+        }
+    }
+}
+
+impl RestoreCircuitBreakerConfig {
+    fn validate(&self) -> crate::Result<()> {
+        if self.failure_threshold == 0 {
+            return Err(crate::Error::Config(
+                "restore.circuit_breaker.failure_threshold must be > 0".to_string(),
+            ));
+        }
+        if self.reset_timeout_ms == 0 {
+            return Err(crate::Error::Config(
+                "restore.circuit_breaker.reset_timeout_ms must be > 0".to_string(),
+            ));
+        }
+        if self.success_threshold == 0 {
+            return Err(crate::Error::Config(
+                "restore.circuit_breaker.success_threshold must be > 0".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Restore-specific options
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestoreOptions {
@@ -866,6 +918,10 @@ pub struct RestoreOptions {
     /// instead of being misclassified as transport failures.
     #[serde(default = "default_produce_timeout_ms")]
     pub produce_timeout_ms: i32,
+
+    /// Kafka circuit breaker settings for restore operations.
+    #[serde(default)]
+    pub circuit_breaker: RestoreCircuitBreakerConfig,
 
     /// Checkpoint state file path for resumable restores
     #[serde(default)]
@@ -1047,6 +1103,7 @@ impl Default for RestoreOptions {
             produce_batch_size: default_produce_batch_size(),
             produce_acks: default_produce_acks(),
             produce_timeout_ms: default_produce_timeout_ms(),
+            circuit_breaker: RestoreCircuitBreakerConfig::default(),
             checkpoint_state: None,
             checkpoint_interval_secs: default_restore_checkpoint_interval_secs(),
             consumer_groups: Vec::new(),
@@ -1085,6 +1142,22 @@ fn default_produce_acks() -> i16 {
 
 fn default_produce_timeout_ms() -> i32 {
     30_000 // 30 seconds, matching the previous hardcoded value
+}
+
+fn default_restore_circuit_breaker_enabled() -> bool {
+    true
+}
+
+fn default_restore_circuit_breaker_failure_threshold() -> u32 {
+    5
+}
+
+fn default_restore_circuit_breaker_reset_timeout_ms() -> u64 {
+    30_000
+}
+
+fn default_restore_circuit_breaker_success_threshold() -> u32 {
+    2
 }
 
 /// Public accessor for integration tests that assert the default acks value.
@@ -1309,6 +1382,8 @@ impl RestoreOptions {
             ));
         }
 
+        self.circuit_breaker.validate()?;
+
         // Validate consumer group offset reset
         if self.reset_consumer_offsets
             && self.consumer_groups.is_empty()
@@ -1352,6 +1427,43 @@ mod tests {
         let defaults = BackupOptions::default();
         assert_eq!(defaults.fetch_max_bytes, None);
         assert_eq!(defaults.segment_max_records, None);
+    }
+
+    #[test]
+    fn restore_circuit_breaker_options_parse_and_default() {
+        let defaults: RestoreOptions = serde_yaml::from_str("{}").unwrap();
+        assert_eq!(defaults.circuit_breaker, RestoreCircuitBreakerConfig::default());
+
+        let configured: RestoreOptions = serde_yaml::from_str(
+            r#"
+circuit_breaker:
+  enabled: false
+  failure_threshold: 15
+  reset_timeout_ms: 2000
+  success_threshold: 1
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(configured.circuit_breaker.enabled, false);
+        assert_eq!(configured.circuit_breaker.failure_threshold, 15);
+        assert_eq!(configured.circuit_breaker.reset_timeout_ms, 2000);
+        assert_eq!(configured.circuit_breaker.success_threshold, 1);
+    }
+
+    #[test]
+    fn restore_circuit_breaker_options_reject_zero_values() {
+        let mut options = RestoreOptions::default();
+        options.circuit_breaker.failure_threshold = 0;
+        assert!(options.validate().is_err());
+
+        options.circuit_breaker = RestoreCircuitBreakerConfig::default();
+        options.circuit_breaker.reset_timeout_ms = 0;
+        assert!(options.validate().is_err());
+
+        options.circuit_breaker = RestoreCircuitBreakerConfig::default();
+        options.circuit_breaker.success_threshold = 0;
+        assert!(options.validate().is_err());
     }
 
     #[test]

@@ -835,6 +835,29 @@ restore:
   rate_limit_records_per_sec: 10000
 ```
 
+#### Circuit Breaker
+
+The Kafka circuit breaker protects restore operations from cascading failures.
+Its defaults preserve the existing behavior. Set `enabled: false` for a
+checkpointed restore when isolated transient failures should not pause the
+whole restore.
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `circuit_breaker.enabled` | bool | No | `true` | Enable Kafka circuit-breaker blocking |
+| `circuit_breaker.failure_threshold` | int | No | `5` | Failures before opening the circuit |
+| `circuit_breaker.reset_timeout_ms` | int | No | `30000` | Delay before a half-open probe |
+| `circuit_breaker.success_threshold` | int | No | `2` | Successful probes before closing the circuit |
+
+```yaml
+restore:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 15
+    reset_timeout_ms: 2000
+    success_threshold: 1
+```
+
 ### Resumable Restores
 
 | Option | Type | Required | Default | Description |

@@ -45,6 +45,7 @@ impl Default for CircuitBreakerConfig {
 /// Circuit breaker for managing failure states
 pub struct CircuitBreaker {
     config: CircuitBreakerConfig,
+    enabled: bool,
     state: Mutex<CircuitBreakerState>,
 }
 
@@ -61,6 +62,7 @@ impl CircuitBreaker {
         info!("Created circuit breaker: {}", config.name);
         Self {
             config,
+            enabled: true,
             state: Mutex::new(CircuitBreakerState {
                 state: CircuitState::Closed,
                 failure_count: 0,
@@ -70,8 +72,18 @@ impl CircuitBreaker {
         }
     }
 
+    /// Create a circuit breaker that never blocks operations.
+    pub fn disabled() -> Self {
+        let mut breaker = Self::new(CircuitBreakerConfig::default());
+        breaker.enabled = false;
+        breaker
+    }
+
     /// Get the current circuit state
     pub fn state(&self) -> CircuitState {
+        if !self.enabled {
+            return CircuitState::Closed;
+        }
         let mut state = self.state.lock();
         self.maybe_transition_to_half_open(&mut state);
         state.state
@@ -79,6 +91,9 @@ impl CircuitBreaker {
 
     /// Check if the circuit allows the operation
     pub fn is_allowed(&self) -> bool {
+        if !self.enabled {
+            return true;
+        }
         let mut state = self.state.lock();
         self.maybe_transition_to_half_open(&mut state);
 
@@ -91,6 +106,9 @@ impl CircuitBreaker {
 
     /// Record a successful operation
     pub fn record_success(&self) {
+        if !self.enabled {
+            return;
+        }
         let mut state = self.state.lock();
 
         match state.state {
@@ -125,6 +143,9 @@ impl CircuitBreaker {
 
     /// Record a failed operation
     pub fn record_failure(&self) {
+        if !self.enabled {
+            return;
+        }
         let mut state = self.state.lock();
 
         state.failure_count += 1;
@@ -237,6 +258,16 @@ mod tests {
             failure_threshold: 3,
             ..Default::default()
         });
+
+        assert_eq!(cb.state(), CircuitState::Closed);
+        assert!(cb.is_allowed());
+    }
+
+    #[test]
+    fn disabled_circuit_breaker_allows_failures() {
+        let cb = CircuitBreaker::disabled();
+
+        cb.record_failure();
 
         assert_eq!(cb.state(), CircuitState::Closed);
         assert!(cb.is_allowed());
