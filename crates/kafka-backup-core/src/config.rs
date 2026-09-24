@@ -1432,7 +1432,10 @@ mod tests {
     #[test]
     fn restore_circuit_breaker_options_parse_and_default() {
         let defaults: RestoreOptions = serde_yaml::from_str("{}").unwrap();
-        assert_eq!(defaults.circuit_breaker, RestoreCircuitBreakerConfig::default());
+        assert_eq!(
+            defaults.circuit_breaker,
+            RestoreCircuitBreakerConfig::default()
+        );
 
         let configured: RestoreOptions = serde_yaml::from_str(
             r#"
