@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-09-24
+
+### Added
+- Configurable `backup.circuit_breaker` and `restore.circuit_breaker` settings,
+  including an `enabled` switch, failure threshold, reset timeout, and success
+  threshold. Disabled breakers remain closed and do not block operations.
+
 ## [0.22.0] - 2026-09-07
 
 ### Added
@@ -176,7 +183,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.19.2] - 2026-08-30
 
-### Fixed
 - Restore can read **compressed legacy JSON segments** again. `read_segment`
   passed only the bare extension (`zst`) to `detect_from_extension`, which
   matches on `.zst` / `.lz4`, so every compressed pre-binary-format segment was
@@ -184,11 +190,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   legacy segments were unaffected. Covered by a unit test per codec.
 
 ## [0.19.1] - 2026-08-29
-
 ### Fixed
 - `kafka_backup_snapshot_records_target` and
   `kafka_backup_snapshot_records_remaining` now describe the work of the
-  current run. Snapshot mode (`stop_at_current_offsets`) sized both gauges
   from the whole captured offset range (`latest - earliest` summed over
   partitions) and only subtracted a partition's checkpointed prefix once that
   partition's task started, so an incremental run over a large archive began
